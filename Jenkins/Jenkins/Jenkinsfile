@@ -1,0 +1,99 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'GITHUB_USER', defaultValue: 'efremandrei', description: 'GitHub Username')
+        password(name: 'GITHUB_PASSWORD', defaultValue: 'Btet050487!', description: 'GitHub Password')
+        string(name: 'GITHUB_REPO', defaultValue: '4danimals', description: 'GitHub Repository Name')
+        string(name: 'DOCKERHUB_USER', defaultValue: 'andreie', description: 'DockerHub Username')
+        password(name: 'DOCKERHUB_PASSWORD', defaultValue: 'And0504efR', description: 'DockerHub Password')
+        string(name: 'IMAGE_NAME', defaultValue: 'andreie/4danimals:latest', description: 'Docker Image Name')
+    }
+
+    environment {
+        GITHUB_USER = "${params.GITHUB_USER}"
+        GITHUB_PASSWORD = "${params.GITHUB_PASSWORD}"
+        GITHUB_REPO = "${params.GITHUB_REPO}"
+        DOCKERHUB_USER = "${params.DOCKERHUB_USER}"
+        DOCKERHUB_PASSWORD = "${params.DOCKERHUB_PASSWORD}"
+        IMAGE_NAME = "${params.IMAGE_NAME}"
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                script {
+                    // Clone the GitHub repository
+                    checkout([$class: 'GitSCM',
+                        branches: [[name: '*/main']],
+                        userRemoteConfigs: [[url: "https://github.com/${env.GITHUB_USER}/${env.GITHUB_REPO}.git",
+                                            credentialsId: 'github-credentials']]
+                    ])
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build the Docker image
+                    sh 'docker build -t ${IMAGE_NAME} .'
+                }
+            }
+        }
+
+        stage('Run Docker Container') {
+            steps {
+                script {
+                    // Run the Docker container
+                    sh 'docker run -d -p 8080:8080 --name test_container ${IMAGE_NAME}'
+                }
+            }
+        }
+
+        stage('Test Container') {
+            steps {
+                script {
+                    // Test the container by sending a GET request to the main page
+                    def response = sh(script: 'curl -s -o /dev/null -w "%{http_code}" http://localhost:8080', returnStdout: true).trim()
+                    if (response != '200') {
+                        error "Failed to get a 200 response. Got ${response} instead."
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    // Push the Docker image to DockerHub
+                    sh 'echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USER} --password-stdin'
+                    sh 'docker push ${IMAGE_NAME}'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline PASSED'
+            script {
+                // Stop and remove the Docker container
+                sh 'docker stop test_container || true'
+                sh 'docker rm test_container || true'
+
+                // Remove all Docker images
+                sh 'docker rmi $(docker images -q) || true'
+
+                // Clean up Docker system
+                sh 'docker system prune -f || true'
+
+                // Delete the cloned repository
+                deleteDir()
+            }
+        }
+        failure {
+            echo 'Pipeline FAILED'
+        }
+    }
+}
