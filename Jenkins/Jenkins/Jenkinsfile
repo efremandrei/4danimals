@@ -46,18 +46,46 @@ pipeline {
             steps {
                 script {
                     // Run the Docker container
-                    sh 'docker run -d -p 8080:8080 --name test_container ${IMAGE_NAME}'
+                    //sh 'docker run -d -p 8081:8080 --name test_container ${IMAGE_NAME}'
+                    sh 'docker run -d --name test_container --network my_bridge_network -p 8081:8080 ${IMAGE_NAME}'
+                    // Wait for 10 seconds to allow the container to start
+                    sleep 10
+                    echo sh(script: 'docker ps -a', returnStdout: true).trim()
                 }
             }
         }
 
+        stage('Verify Container is Up') {
+            steps {
+                script {
+                    // Verify the container is up
+                    def containerStatus = sh(script: 'docker ps -a --filter "name=test_container" --format "{{.Status}}"', returnStdout: true).trim()
+                    if (containerStatus.contains("Up")) {
+                        echo "Container is running: ${containerStatus}"
+                    } else {
+                        error "Container is not running. Current status: ${containerStatus}"
+                    }
+                }
+            }
+        }
+
+
         stage('Test Container') {
             steps {
                 script {
-                    // Test the container by sending a GET request to the main page
-                    def response = sh(script: 'curl -s -o /dev/null -w "%{http_code}" http://localhost:8080', returnStdout: true).trim()
-                    if (response != '200') {
-                        error "Failed to get a 200 response. Got ${response} instead."
+                    // Retry up to 3 times, waiting 10 seconds between attempts
+                    retry(3) {
+                        try {
+                            // Test the container by sending a GET request to the main page
+                            def response = sh(script: 'curl -s -o /dev/null -w "%{http_code}" http://test_container:8080', returnStdout: true).trim()
+                            if (response != '200') {
+                                error "Failed to get a 200 response. Got ${response} instead."
+                            }
+                        } catch (Exception e) {
+                            echo "Attempt to access container failed. Retrying in 10 seconds..."
+                            sleep 10
+                            throw e
+                        }
                     }
                 }
             }
@@ -93,7 +121,7 @@ pipeline {
             }
         }
         failure {
-            echo 'Pipeline FAILED'
+            echo 'Pipeline FAILED - Keeping all created resources intact, for DEBUGGING'
         }
     }
 }
