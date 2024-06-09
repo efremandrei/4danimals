@@ -41,7 +41,7 @@ def before_request_func():
 @app.after_request
 def after_request(response):
     """
-    The dunction calculates the latency by subtracting the recorded start time from the current time.
+    The function calculates the latency by subtracting the recorded start time from the current time.
     Then, it increments the REQUEST_COUNTER metric for the appropriate labels derived from the request and response
     details: HTTP method, the endpoint accessed, and the HTTP status code of the response.
     The response object is then returned, unchanged.
