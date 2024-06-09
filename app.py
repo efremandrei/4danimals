@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Histogram, Counter, generate_latest, CONTENT_TYPE_LATEST
 from datetime import datetime
 import sqlite3, hashlib, time
 from validate_fileds import validate_form
@@ -22,6 +22,13 @@ REQUEST_COUNTER = Counter(
     ['method', 'endpoint', 'status']
 )
 
+REQUEST_LATENCY = Histogram(
+    'request_latency_seconds',
+    'Request latency in seconds',
+    ['method', 'endpoint']
+)
+
+
 #runs before any REST API request is handled, saves aside the start time
 @app.before_request
 def before_request_func():
@@ -39,7 +46,11 @@ def after_request(response):
     details: HTTP method, the endpoint accessed, and the HTTP status code of the response.
     The response object is then returned, unchanged.
     """
-    request_latency = time.time() - request._prometheus_metrics_request_start_time
+    ncy = time.time() - request._prometheus_metrics_request_start_time
+    REQUEST_LATENCY.labels(
+        method=request.method,
+        endpoint=request.endpoint
+    ).observe(ncy)
     REQUEST_COUNTER.labels(
         method=request.method,
         endpoint=request.endpoint,
