@@ -121,7 +121,21 @@ pipeline {
             }
         }
         failure {
-            echo 'Pipeline FAILED - Keeping all created resources intact, for DEBUGGING'
+            echo 'Pipeline FAILED'
+            script {
+                // Stop and remove the Docker container
+                sh 'docker stop test_container || true'
+                sh 'docker rm test_container || true'
+
+                // Remove all Docker images
+                sh 'docker rmi $(docker images -q) || true'
+
+                // Clean up Docker system
+                sh 'docker system prune -f || true'
+
+                // Delete the cloned repository
+                deleteDir()
+            }
         }
     }
 }
