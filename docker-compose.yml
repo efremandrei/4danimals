@@ -1,0 +1,53 @@
+version: '3.9'
+
+services:
+  test_container:
+    image: andreie/4danimals:latest
+    container_name: test_container
+    command: "./startup.sh flask ..."
+    ports:
+      - "8081:8080"
+    networks:
+      - my_bridge_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command: "/bin/prometheus --config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    volumes:
+      - /home/andrei/prometheus_data:/prometheus
+    networks:
+      - my_bridge_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    command: "/run.sh"
+    ports:
+      - "3000:3000"
+    networks:
+      - my_bridge_network
+
+  custom_jenkins_docker:
+    image: custom-jenkins-docker
+    container_name: custom-jenkins-docker
+    command: "/usr/bin/tini -- /usr/local/bin/jenkins.sh"
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - bridge
+      - my_bridge_network
+
+networks:
+  my_bridge_network:
+    external: true
+
+volumes:
+  jenkins_home:
+    external: true
