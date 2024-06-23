@@ -42,16 +42,16 @@ def check_endpoints(endpoints, run_duration_hours=24):
 
 # Example list of endpoints
 endpoints = [
-    "http://localhost:8081/",
-    "http://localhost:8081/faqs",
-    "http://localhost:8081/about-us",
-    "http://localhost:8081/add-volunteer",
-    "http://localhost:8081/add-adopter",
-    "http://localhost:8081/add-animal",
-    "http://localhost:8081/view-volunteers",
-    "http://localhost:8081/view-adopters",
-    "http://localhost:8081/view-animals",
-    "http://localhost:8081/log-in",
+    "http://test-container:8080/",
+    "http://test-container:8080/faqs",
+    "http://test-container:8080/about-us",
+    "http://test-container:8080/add-volunteer",
+    "http://test-container:8080/add-adopter",
+    "http://test-container:8080/add-animal",
+    "http://test-container:8080/view-volunteers",
+    "http://test-container:8080/view-adopters",
+    "http://test-container:8080/view-animals",
+    "http://test-container:8080/log-in",
 ]
 
 # Run the function
