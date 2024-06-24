@@ -1,20 +1,24 @@
-# Use the official Jenkins LTS image from Docker Hub
 FROM jenkins/jenkins:lts
 
-# Skip the initial setup wizard
-ENV JAVA_OPTS -Djenkins.install.runSetupWizard=false
+# Switch to root user to install additional software
+USER root
 
-# Install plugins: Configuration as Code and any others you might need
-RUN /usr/local/bin/install-plugins.sh configuration-as-code
+# Install necessary packages
+RUN apt-get update && \
+    apt-get install -y curl unzip python3 python3-pip awscli && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy your Configuration as Code YAML file into the container
-COPY jenkins.yaml /var/jenkins_home/jenkins.yaml
+# Install Terraform
+RUN curl -O https://releases.hashicorp.com/terraform/1.8.5/terraform_1.8.5_linux_amd64.zip && \
+    unzip terraform_1.8.5_linux_amd64.zip && \
+    mv terraform /usr/local/bin/ && \
+    rm terraform_1.8.5_linux_amd64.zip
 
-# Copy the Groovy init script to automatically trigger the job
-COPY triggerJob.groovy /usr/share/jenkins/ref/init.groovy.d/triggerJob.groovy
+# Install Python requests module
+RUN pip3 install requests
 
-# Tell Jenkins where to find the Configuration as Code YAML file
-ENV CASC_JENKINS_CONFIG /var/jenkins_home/jenkins.yaml
+# Switch back to the jenkins user
+USER jenkins
 
 # Expose the default Jenkins port
 EXPOSE 8080
