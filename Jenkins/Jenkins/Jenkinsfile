@@ -3,12 +3,24 @@ pipeline {
 
     parameters {
         string(name: 'GITHUB_USER', defaultValue: 'efremandrei', description: 'GitHub Username')
-        password(name: 'GITHUB_PASSWORD', defaultValue: 'Btet050487!', description: 'GitHub Password')
+        password(name: 'GITHUB_PASSWORD', defaultValue: '******', description: 'GitHub Password')
         string(name: 'GITHUB_REPO', defaultValue: '4danimals', description: 'GitHub Repository Name')
         string(name: 'DOCKERHUB_USER', defaultValue: 'andreie', description: 'DockerHub Username')
         password(name: 'DOCKERHUB_PASSWORD', defaultValue: 'And0504efR', description: 'DockerHub Password')
+        password(name: 'AWS_ACCESS_KEY_ID', defaultValue: '******', description: 'AWS Access Key ID')
+        password(name: 'AWS_SECRET_ACCESS_KEY', defaultValue: '******', description: 'AWS Secret Access Key')
         booleanParam(name: 'RUN_CLEANUP', defaultValue: false, description: 'Run cleanup of resources after pipeline completion')
-        booleanParam(name: 'RUN_CLIENT_SIM', defaultValue: false, description: 'Run clientSim.py after pushing Docker image')
+        booleanParam(name: 'RUN_CLONE_REPO', defaultValue: true, description: 'Run Clone Repository stage')
+        booleanParam(name: 'RUN_BUILD_DOCKER_IMAGE', defaultValue: true, description: 'Run Build Docker Image stage')
+        booleanParam(name: 'RUN_DOCKER_CONTAINER', defaultValue: true, description: 'Run Docker Container stage')
+        booleanParam(name: 'RUN_VERIFY_CONTAINER', defaultValue: true, description: 'Run Verify Container stage')
+        booleanParam(name: 'RUN_TEST_CONTAINER', defaultValue: true, description: 'Run Test Container stage')
+        booleanParam(name: 'RUN_PUSH_DOCKER_IMAGE', defaultValue: true, description: 'Run Push Docker Image stage')
+        booleanParam(name: 'RUN_TERRAFORM', defaultValue: true, description: 'Run Terraform stages')
+        booleanParam(name: 'TERRAFORM_INIT', defaultValue: true, description: 'Run Terraform Init')
+        booleanParam(name: 'TERRAFORM_PLAN', defaultValue: true, description: 'Run Terraform Plan')
+        booleanParam(name: 'TERRAFORM_APPLY', defaultValue: true, description: 'Run Terraform Apply')
+        booleanParam(name: 'VERIFY_HTTP', defaultValue: true, description: 'Verify HTTP response from web application')
     }
 
     environment {
@@ -17,15 +29,19 @@ pipeline {
         GITHUB_REPO = "${params.GITHUB_REPO}"
         DOCKERHUB_USER = "${params.DOCKERHUB_USER}"
         DOCKERHUB_PASSWORD = "${params.DOCKERHUB_PASSWORD}"
+        AWS_ACCESS_KEY_ID = "${params.AWS_ACCESS_KEY_ID}"
+        AWS_SECRET_ACCESS_KEY = "${params.AWS_SECRET_ACCESS_KEY}"
         TIMESTAMP = new Date().format("yyyyMMddHHmmss")
         IMAGE_NAME = "${params.DOCKERHUB_USER}/4danimals:${env.TIMESTAMP}"
     }
 
     stages {
         stage('Clone Repository') {
+            when {
+                expression { return params.RUN_CLONE_REPO }
+            }
             steps {
                 script {
-                    // Clone the GitHub repository
                     checkout([$class: 'GitSCM',
                         branches: [[name: '*/main']],
                         userRemoteConfigs: [[url: "https://github.com/${env.GITHUB_USER}/${env.GITHUB_REPO}.git",
@@ -36,18 +52,24 @@ pipeline {
         }
 
         stage('Build Docker Image') {
+            when {
+                expression { return params.RUN_BUILD_DOCKER_IMAGE }
+            }
             steps {
                 script {
-                    // Build the Docker image
                     sh 'docker build -t ${IMAGE_NAME} .'
                 }
             }
         }
 
         stage('Run Docker Container') {
+            when {
+                expression { return params.RUN_DOCKER_CONTAINER }
+            }
             steps {
                 script {
-                    // Determine the next available container name
+                    sh 'docker info > /dev/null 2>&1 || (echo "Docker service is not running. Exiting." && exit 1)'
+
                     def containerIndex = 1
                     def containerName = "test_container"
                     while (sh(script: "docker ps -a --format '{{.Names}}' | grep -w ${containerName}", returnStatus: true) == 0) {
@@ -55,19 +77,15 @@ pipeline {
                         containerName = "test_container_${containerIndex}"
                     }
 
-                    // Find an available port
                     def port = 8081
                     while (sh(script: "docker ps --format '{{.Ports}}' | grep -w ${port}->8080", returnStatus: true) == 0) {
                         port++
                     }
 
-                    // Run the Docker container
                     sh "docker run -d --name ${containerName} --network my_bridge_network -p ${port}:8080 ${IMAGE_NAME}"
-                    // Wait for 20 seconds to allow the container to start
                     sleep 20
                     echo sh(script: 'docker ps -a', returnStdout: true).trim()
                     
-                    // Save port and container name for later stages
                     env.CONTAINER_NAME = containerName
                     env.PORT = port.toString()
                     env.CONTAINER_INDEX = containerIndex.toString()
@@ -76,9 +94,11 @@ pipeline {
         }
 
         stage('Verify Container is Up') {
+            when {
+                expression { return params.RUN_VERIFY_CONTAINER }
+            }
             steps {
                 script {
-                    // Verify the container is up
                     def containerStatus = sh(script: "docker ps -a --filter 'name=${env.CONTAINER_NAME}' --format '{{.Status}}'", returnStdout: true).trim()
                     if (containerStatus.contains("Up")) {
                         echo "Container is running: ${containerStatus}"
@@ -90,14 +110,15 @@ pipeline {
         }
 
         stage('Test Container') {
+            when {
+                expression { return params.RUN_TEST_CONTAINER }
+            }
             steps {
                 script {
-                    // Retry up to 3 times, waiting 10 seconds between attempts
                     retry(3) {
                         try {
-                            // Test the container by sending a GET request to the main page
                             def response = sh(script: "curl -s -o /dev/null -w \"%{http_code}\" http://${env.CONTAINER_NAME}:8080", returnStdout: true).trim()
-                            echo "curl response: ${response}"  // Add debug information
+                            echo "curl response: ${response}"
                             if (response != '200') {
                                 error "Failed to get a 200 response. Got ${response} instead."
                             } else {
@@ -114,27 +135,81 @@ pipeline {
         }
 
         stage('Push Docker Image') {
+            when {
+                expression { return params.RUN_PUSH_DOCKER_IMAGE }
+            }
             steps {
                 script {
-                    // Push the Docker image to DockerHub
                     sh 'echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USER} --password-stdin'
                     sh 'docker push ${IMAGE_NAME}'
                 }
             }
         }
 
-        stage('Run Client Simulation') {
+        stage('Clone Terraform Repository') {
             when {
-                expression { return params.RUN_CLIENT_SIM }
+                expression { return params.RUN_TERRAFORM }
             }
             steps {
                 script {
-                    // Run clientSim.py for 5 minutes and then stop it
-                    echo "Starting clientSim.py..."
-                    def clientSimProcess = sh(script: "python clientSim.py & echo \$!", returnStdout: true).trim()
-                    sleep(300) // Sleep for 5 minutes (300 seconds)
-                    sh "kill ${clientSimProcess}"
-                    echo "Stopped clientSim.py."
+                    checkout([$class: 'GitSCM',
+                        branches: [[name: '*/main']],
+                        userRemoteConfigs: [[url: "https://github.com/efremandrei/terraform4danimals.git",
+                                            credentialsId: 'github-credentials']]
+                    ])
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            when {
+                expression { return params.TERRAFORM_INIT }
+            }
+            steps {
+                script {
+                    sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            when {
+                expression { return params.TERRAFORM_PLAN }
+            }
+            steps {
+                script {
+                    sh 'terraform plan'
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { return params.TERRAFORM_APPLY }
+            }
+            steps {
+                script {
+                    sh 'terraform apply -auto-approve'
+                }
+            }
+        }
+
+        stage('Get Application Address and Verify HTTP 200') {
+            when {
+                expression { return params.VERIFY_HTTP }
+            }
+            steps {
+                script {
+                    def publicAddress = sh(script: "terraform output -raw web_app_address", returnStdout: true).trim()
+                    echo "Web application public address: ${publicAddress}"
+
+                    def response = sh(script: "curl -s -o /dev/null -w \"%{http_code}\" http://${publicAddress}", returnStdout: true).trim()
+                    echo "curl response: ${response}"
+                    if (response != '200') {
+                        error "Failed to get a 200 response from the web application. Got ${response} instead."
+                    } else {
+                        echo "Successfully received a 200 response from the web application."
+                    }
                 }
             }
         }
@@ -144,17 +219,10 @@ pipeline {
         always {
             script {
                 if (params.RUN_CLEANUP) {
-                    // Stop and remove the Docker container
                     sh "docker stop ${env.CONTAINER_NAME} || true"
                     sh "docker rm ${env.CONTAINER_NAME} || true"
-
-                    // Remove all Docker images
                     sh 'docker rmi $(docker images -q) || true'
-
-                    // Clean up Docker system
                     sh 'docker system prune -f || true'
-
-                    // Delete the cloned repository
                     deleteDir()
                 }
             }
