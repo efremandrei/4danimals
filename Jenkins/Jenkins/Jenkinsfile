@@ -2,11 +2,11 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'GITHUB_USER', defaultValue: 'efremandrei', description: 'GitHub Username')
+        string(name: 'GITHUB_USER', defaultValue: '------‐', description: 'GitHub Username')
         password(name: 'GITHUB_PASSWORD', defaultValue: '******', description: 'GitHub Password')
         string(name: 'GITHUB_REPO', defaultValue: '4danimals', description: 'GitHub Repository Name')
-        string(name: 'DOCKERHUB_USER', defaultValue: 'andreie', description: 'DockerHub Username')
-        password(name: 'DOCKERHUB_PASSWORD', defaultValue: 'And0504efR', description: 'DockerHub Password')
+        string(name: 'DOCKERHUB_USER', defaultValue: '‐--------', description: 'DockerHub Username')
+        password(name: 'DOCKERHUB_PASSWORD', defaultValue: '------‐--', description: 'DockerHub Password')
         password(name: 'AWS_ACCESS_KEY_ID', defaultValue: '******', description: 'AWS Access Key ID')
         password(name: 'AWS_SECRET_ACCESS_KEY', defaultValue: '******', description: 'AWS Secret Access Key')
         booleanParam(name: 'RUN_CLEANUP', defaultValue: false, description: 'Run cleanup of resources after pipeline completion')
